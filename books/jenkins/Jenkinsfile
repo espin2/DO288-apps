@@ -14,9 +14,9 @@ pipeline {
         //TODO: Edit these vars as per your env
         DEV_PROJECT = "espin-books-dev"
         STAGE_PROJECT = "espin-books-stage"
-        APP_GIT_URL = "https://github.com/youruser/DO288-apps"
+        APP_GIT_URL = "https://github.com/espin2/DO288-apps"
         //NEXUS_SERVER = "http://nexus-common.apps.cluster.domain.example.com/repository/nodejs"
-        NEXUS_SERVER = "https://registry.npmjs.org/"
+        NEXUS_SERVER = "http://nexus-espin-books-stage.apps.vdg-prod.nobubank.lab/repository/nodejs/"
         // DO NOT CHANGE THE GLOBAL VARS BELOW THIS LINE
         APP_NAME = "books"
     }
@@ -100,6 +100,11 @@ pipeline {
                 timeout(time: 60, unit: 'MINUTES') {
                     input message: "Promote to Staging?"
                 }
+                script {
+                      openshift.withCluster() {
+                      openshift.tag("${DEV_PROJECT}/books:latest", "${STAGE_PROJECT}/books:stage")
+                }
+              }
                 //TODO: Tag the books:latest image stream as books:stage
             }
         }
@@ -114,6 +119,12 @@ pipeline {
                    '''
 
                 echo '### Creating a new app in Staging ###'
+                sh '''
+                        oc project ${STAGE_PROJECT}
+                        oc new-app --name books -i books:stage
+                        oc expose svc/${APP_NAME}
+                   '''
+
                 //TODO: Create a new app in stage using the books:stage image stream and expose the service
             }
         }
@@ -127,6 +138,13 @@ pipeline {
 
                     openshift.withCluster() {
                         //TODO: Watch deployment until pod is in 'Running' state
+                        openshift.withProject( "${STAGE_PROJECT}" ) {
+                            def deployment = openshift.selector("dc", "${APP_NAME}").rollout()
+                            openshift.selector("dc", "${APP_NAME}").related('pods').untilEach(1) {
+                                return (it.object().status.phase == "Running")
+                              }
+                            }
+
 
                         echo "Deployment to Staging env is complete. Access the app at the URL http://${routeHost}."
                     }
